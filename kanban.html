@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Канбан-доска</title>
+    <style>
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            background: #f0f2f5;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        h2 {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #1a1a1a;
+        }
+        .board {
+            display: flex;
+            gap: 16px;
+            overflow-x: auto;
+            padding-bottom: 10px;
+        }
+        .column {
+            background: #e9ecef;
+            width: 280px;
+            min-width: 280px;
+            border-radius: 8px;
+            padding: 10px;
+        }
+        .column h3 {
+            margin: 0 0 10px 0;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #adb5bd;
+            font-size: 16px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .task-list {
+            min-height: 350px;
+            margin-bottom: 10px;
+        }
+        .task {
+            background: white;
+            padding: 8px;
+            margin-bottom: 8px;
+            border-radius: 6px;
+            border: 1px solid #ced4da;
+        }
+        .task-text {
+            word-wrap: break-word;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+        .task-buttons {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+        }
+        .task-buttons button {
+            font-size: 11px;
+            padding: 3px 6px;
+            cursor: pointer;
+            background: #f8f9fa;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+        }
+        .task-buttons button:hover {
+            background: #e2e6ea;
+        }
+        .delete-btn {
+            color: #dc3545;
+        }
+        .add-form {
+            display: flex;
+            gap: 5px;
+            margin-top: 8px;
+        }
+        .add-form input {
+            flex: 1;
+            padding: 5px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+        }
+        .add-form button {
+            padding: 5px 10px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .reset-btn {
+            display: block;
+            margin: 25px auto 0;
+            padding: 6px 16px;
+            background: #6c757d;
+            color: white;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+        }
+        .badge {
+            font-size: 12px;
+            background: #adb5bd;
+            padding: 2px 6px;
+            border-radius: 12px;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h2>Канбан-доска</h2>
+    <div class="board" id="board"></div>
+    <button class="reset-btn" id="resetBtn">Очистить всё</button>
+</div>
+
+<script>
+    // Структура колонок
+    const columns = {
+        backlog: { title: '📋 Бэклог', tasks: [], limit: null },
+        progress: { title: '⚙️ В работе', tasks: [], limit: 3 },
+        done: { title: '✅ Готово', tasks: [], limit: null },
+        approved: { title: '✔️ Принято', tasks: [], limit: null },
+        blocked: { title: '🔴 Заблокировано', tasks: [], limit: null }
+    };
+
+    // Загрузка из localStorage
+    function loadData() {
+        const saved = localStorage.getItem('my_kanban');
+        if (saved) {
+            const data = JSON.parse(saved);
+            for (let key in columns) {
+                if (data[key]) columns[key].tasks = data[key];
+            }
+        }
+    }
+
+    // Сохранение
+    function saveData() {
+        const toSave = {};
+        for (let key in columns) {
+            toSave[key] = columns[key].tasks;
+        }
+        localStorage.setItem('my_kanban', JSON.stringify(toSave));
+    }
+
+    // Перемещение задачи
+    function moveTask(task, fromCol, toCol) {
+        const target = columns[toCol];
+        const source = columns[fromCol];
+        
+        if (target.limit !== null && target.tasks.length >= target.limit) {
+            alert('Лимит: ' + target.title + ' не более ' + target.limit);
+            return;
+        }
+        
+        const idx = source.tasks.indexOf(task);
+        if (idx !== -1) {
+            source.tasks.splice(idx, 1);
+            target.tasks.push(task);
+            saveData();
+            render();
+        }
+    }
+
+    // Удаление
+    function deleteTask(task, colKey) {
+        const list = columns[colKey].tasks;
+        const idx = list.indexOf(task);
+        if (idx !== -1) {
+            list.splice(idx, 1);
+            saveData();
+            render();
+        }
+    }
+
+    // Добавление
+    function addTask(colKey) {
+        const input = document.getElementById('input_' + colKey);
+        const text = input.value.trim();
+        if (text === '') return;
+        columns[colKey].tasks.push(text);
+        saveData();
+        render();
+        input.value = '';
+    }
+
+    // Отрисовка доски
+    function render() {
+        const board = document.getElementById('board');
+        board.innerHTML = '';
+        
+        for (let key in columns) {
+            const col = columns[key];
+            const count = col.tasks.length;
+            const limitText = col.limit ? '/' + col.limit : '';
+            
+            const colDiv = document.createElement('div');
+            colDiv.className = 'column';
+            colDiv.innerHTML = `
+                <h3>
+                    ${col.title}
+                    <span class="badge">${count}${limitText}</span>
+                </h3>
+                <div class="task-list" id="list_${key}"></div>
+                <div class="add-form">
+                    <input type="text" id="input_${key}" placeholder="Новая задача">
+                    <button onclick="addTask('${key}')">+</button>
+                </div>
+            `;
+            board.appendChild(colDiv);
+            
+            const taskContainer = document.getElementById('list_' + key);
+            
+            for (let task of col.tasks) {
+                const taskDiv = document.createElement('div');
+                taskDiv.className = 'task';
+                
+                const textDiv = document.createElement('div');
+                textDiv.className = 'task-text';
+                textDiv.innerText = task;
+                
+                const btnDiv = document.createElement('div');
+                btnDiv.className = 'task-buttons';
+                
+                // Кнопки перемещения
+                for (let targetKey in columns) {
+                    if (targetKey === key) continue;
+                    const targetCol = columns[targetKey];
+                    let disabled = false;
+                    if (targetCol.limit !== null && targetCol.tasks.length >= targetCol.limit) {
+                        disabled = true;
+                    }
+                    const btn = document.createElement('button');
+                    btn.innerText = '→ ' + targetCol.title.slice(0,2);
+                    if (disabled) btn.disabled = true;
+                    btn.onclick = (function(t, f, tKey) {
+                        return function() { moveTask(t, f, tKey); };
+                    })(task, key, targetKey);
+                    btnDiv.appendChild(btn);
+                }
+                
+                // Кнопка удаления
+                const delBtn = document.createElement('button');
+                delBtn.innerText = '✖';
+                delBtn.className = 'delete-btn';
+                delBtn.onclick = (function(t, c) {
+                    return function() { deleteTask(t, c); };
+                })(task, key);
+                btnDiv.appendChild(delBtn);
+                
+                taskDiv.appendChild(textDiv);
+                taskDiv.appendChild(btnDiv);
+                taskContainer.appendChild(taskDiv);
+            }
+            
+            if (col.tasks.length === 0) {
+                const emptyMsg = document.createElement('div');
+                emptyMsg.innerText = '— пусто —';
+                emptyMsg.style.color = '#888';
+                emptyMsg.style.textAlign = 'center';
+                emptyMsg.style.padding = '20px 0';
+                taskContainer.appendChild(emptyMsg);
+            }
+        }
+    }
+    
+    // Очистка всей доски
+    function resetBoard() {
+        if (confirm('Удалить все задачи?')) {
+            for (let key in columns) {
+                columns[key].tasks = [];
+            }
+            saveData();
+            render();
+        }
+    }
+    
+    document.getElementById('resetBtn').onclick = resetBoard;
+    
+    loadData();
+    render();
+</script>
+</body>
+</html>
